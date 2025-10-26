@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-R">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEP Dynamic Grid Analyzer</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex flex-col lg:flex-row h-screen">
+        <div class="w-full lg:w-1/3 bg-white shadow-lg overflow-y-auto p-6">
+            <h1 class="text-3xl font-bold text-blue-600 mb-6">AEP Dynamic Grid Analyzer</h1>
+            
+            <div class="report-card">
+                <h2 class="text-xl font-semibold mb-4 collapsible-header flex justify-between items-center">
+                    <span>Grid Parameters</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[-]</span>
+                </h2>
+                
+                <div class="collapsible-content">
+                    <div class="slider-container">
+                        <label class="block text-sm font-medium text-gray-700">Temperature (<span id="temp-value">25.0</span>°C)</label>
+                        <input id="temp-slider" type="range" min="0" max="50" value="25" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <input id="temp-input" type="number" min="0" max="50" value="25" step="0.1" class="w-full mt-2 p-2 border rounded-md">
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label class="block text-sm font-medium text-gray-700">Wind Speed (<span id="wind-value">2.0</span> ft/s)</label>
+                        <input id="wind-slider" type="range" min="0.5" max="60" value="2" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <input id="wind-input" type="number" min="0.5" max="60" value="2" step="0.1" class="w-full mt-2 p-2 border rounded-md">
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label class="block text-sm font-medium text-gray-700">Load Multiplier (<span id="load-value">1.0</span>x)</label>
+                        <input id="load-slider" type="range" min="0.5" max="3.0" value="1.0" step="0.05" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <input id="load-input" type="number" min="0.5" max="3.0" value="1.0" step="0.05" class="w-full mt-2 p-2 border rounded-md">
+                    </div>
+
+                    <div class="flex space-x-2 mt-4">
+                        <button id="find-temp-breakpoint" class="w-1/2 bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded text-sm">
+                            Find Temp Breakpoint
+                        </button>
+                        <button id="find-wind-breakpoint" class="w-1/2 bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded text-sm">
+                            Find Wind Breakpoint
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <h2 class="text-xl font-semibold collapsible-header flex justify-between items-center">
+                    <span>Line Control (N-1 Analysis)</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[+]</span>
+                </h2>
+                
+                <div class="collapsible-content collapsed">
+                    <p class="text-sm text-gray-600 mb-3">Click lines on map or toggle below to simulate outages</p>
+                    <div id="line-list" class="max-h-64 overflow-y-auto border rounded-md">
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <h2 class="text-xl font-semibold collapsible-header flex justify-between items-center">
+                    <span>Real-time Report</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[+]</span>
+                </h2>
+                
+                <div class="collapsible-content collapsed">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-700">Average System Stress:</span>
+                        <span id="stress-score" class="text-2xl font-bold text-red-600">0.0%</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-700">Offline Lines:</span>
+                        <span id="offline-count" class="text-xl font-bold text-gray-600">0</span>
+                    </div>
+                    
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-700">Overloaded Lines:</span>
+                        <span id="overloaded-count" class="text-xl font-bold text-red-600">0</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-700">Total Lines:</span>
+                        <span id="total-lines-count" class="text-xl font-bold text-gray-600">0</span>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2 mb-2">
+                            <select id="report-mode-select" class="p-1 border rounded-md text-sm">
+                                <option value="top_n" selected>Top Failing Lines</option>
+                                <option value="over_n">Lines Overloaded By</option>
+                            </select>
+                            
+                            <div id="top-n-container">
+                                <input id="n-input" type="number" value="5" min="1" class="w-16 p-1 border rounded-md text-sm">
+                            </div>
+                            
+                            <div id="over-n-container" style="display: none;" class="flex items-center space-x-1">
+                                <input id="n-percent-input" type="number" value="50" min="1" class="w-16 p-1 border rounded-md text-sm">
+                                <span>%</span>
+                            </div>
+                        </div>
+
+                        <label id="report-list-label" class="text-sm font-medium text-gray-700">Top 5 Failing Lines</label>
+                        <ul id="report-list" class="list-disc list-inside mt-2 text-gray-800">
+                            <li>No failures detected.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <h2 class="text-xl font-semibold collapsible-header flex justify-between items-center">
+                    <span>N-1 Contingency Analysis</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[+]</span>
+                </h2>
+                
+                <div class="collapsible-content collapsed">
+                    <p class="text-sm text-gray-600 mb-3">Finds the single line failure that causes the most overloads under current conditions.</p>
+                    <button id="n1-analysis-button" class="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+                        Find Biggest Contingency
+                    </button>
+                    
+                    <button id="cascade-analysis-button" class="w-full bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded mt-3">
+                        Run Cascade Analysis
+                    </button>
+                    
+                    <button id="remediation-analysis-button" class="w-full bg-green-600 hover:bg-green-800 text-white font-bold py-2 px-4 rounded mt-3">
+                        Find Remediation Plan
+                    </button>
+                    <div class="mt-4">
+                        <label class="text-sm font-medium text-gray-700">Remediation Plan:</label>
+                        <ul id="remediation-list" class="list-disc list-inside mt-2 text-gray-800">
+                            <li class="text-gray-500 italic">Run analysis to find a plan.</li>
+                        </ul>
+                    </div>
+                    <ul id="n1-analysis-list" class="list-disc list-inside mt-4 text-gray-800">
+                        <li class="text-gray-500 italic">Run analysis to see results.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="report-card">
+                <h2 class="text-xl font-semibold collapsible-header flex justify-between items-center">
+                    <span>24-Hour Simulation</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[+]</span>
+                </h2>
+                
+                <div class="collapsible-content collapsed">
+                    <div class="flex items-center justify-between">
+                        <button id="sim-button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                            Run 24h Simulation
+                        </button>
+                        <span id="sim-time" class="text-lg font-mono font-bold">Time: 00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-card">
+                <h2 class="text-xl font-semibold collapsible-header flex justify-between items-center">
+                    <span>7-Day Failure Forecast</span>
+                    <span class="toggle-icon text-blue-500 font-bold text-lg">[+]</span>
+                </h2>
+                
+                <div class="collapsible-content collapsed">
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr>
+                                <th class="py-3 px-2">Day</th>
+                                <th class="py-3 px-2">Temp (°C)</th>
+                                <th class="py-3 px-2">Wind (ft/s)</th>
+                                <th classs="py-3 px-2">Load (x)</th>
+                                <th class="py-3 px-2">Failures</th>
+                                <th class="py-3 px-2">Stress</th>
+                            </tr>
+                        </thead>
+                        <tbody id="forecast-table-body">
+                            </tbody>
+                    </table>
+                    <button id="forecast-button" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4">
+                        Run Weekly Forecast
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="w-full lg:w-2/3 relative">
+            <div id="map"></div>
+            <div id="loading-overlay" class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-[1000]" style="display: none;">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+
+    <script>
+    (function(){
+
+
+        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+        let simRunning = false;
+        let simEvents = [];
+        const simBtn = document.getElementById('sim-button');
+        const simTimeEl = document.getElementById('sim-time');
+
+        if (!simBtn || !simTimeEl) {
+            console.warn("24h-sim: required DOM elements not found; simulation disabled.");
+            return;
+        }
+        async function fetchGridStatus(temp, wind, load_mult, n) {
+            try {
+                const url = `/api/grid-status?temp=${encodeURIComponent(temp)}&wind=${encodeURIComponent(wind)}&load_mult=${encodeURIComponent(load_mult)}&n=${encodeURIComponent(n)}`;
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    console.error("24h-sim: grid-status fetch failed:", resp.status);
+                    return null;
+                }
+                const data = await resp.json();
+                return data;
+            } catch (err) {
+                console.error("24h-sim: fetchGridStatus error", err);
+                return null;
+            }
+        }
+        function collectOverloadedLinesFromResponse(resp) {
+            if (!resp || !resp.lines) return [];
+            const overloaded = [];
+            for (const [name, obj] of Object.entries(resp.lines)) {
+                const loading = Number(obj.loading);
+                if (obj.status_color === 'red' || loading > 0) {
+                    overloaded.push(name);
+                }
+            }
+            return overloaded;
+        }
+        function showSimSummaryPanel(earliest, events) {
+            let container = document.getElementById('sim-results-panel');
+            if (!container) {
+                // --- THIS IS THE FIX (Line 1) ---
+                const collapsibleContent = simBtn.closest('.collapsible-content');
+                if (!collapsibleContent) {
+                    console.error("24h-sim: Could not find parent '.collapsible-content' for results panel.");
+                    return;
+                }
+                container = document.createElement('div');
+                container.id = 'sim-results-panel';
+                container.className = 'mt-3 p-3 border rounded bg-white shadow-sm';
+                // --- THIS IS THE FIX (Line 2) ---
+                collapsibleContent.appendChild(container);
+            }
+
+            if (!events || events.length === 0) {
+                container.innerHTML = `<div class="text-sm text-gray-700">No overloads detected during the 24-hour simulation.</div>`;
+                return;
+            }
+
+            const earliestHtml = `<div class="text-sm mb-2"><strong>Earliest overload:</strong> ${String(earliest.hour).padStart(2,'0')}:00 — <em>${earliest.lines.join(', ')}</em></div>`;
+
+            let listHtml = `<div class="text-sm"><strong>Overloads by hour:</strong><div class="mt-2">`;
+            events.forEach(ev => {
+                listHtml += `<div style="border-bottom:1px dashed #e5e7eb;padding:6px 0;"><strong>${String(ev.hour).padStart(2,'0')}:00</strong> — ${ev.lines.join(', ')}</div>`;
+            });
+            listHtml += `</div></div>`;
+
+            const downloadBtnHtml = `<div class="mt-3"><button id="sim-download-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded">Download CSV</button></div>`;
+
+            container.innerHTML = earliestHtml + listHtml + downloadBtnHtml;
+
+            const dl = document.getElementById('sim-download-btn');
+            if (dl) {
+                dl.onclick = () => {
+                    const csvRows = [['hour','lines']];
+                    events.forEach(ev => csvRows.push([String(ev.hour).padStart(2,'0') + ':00', ev.lines.join(';')]));
+                    const csv = csvRows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+                    const blob = new Blob([csv], {type: 'text/csv'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'sim_overload_summary.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                };
+            }
+        }
+        async function run24hSimulation() {
+            if (simRunning) return;
+            simRunning = true;
+            simEvents = [];
+
+            simBtn.disabled = true;
+            simBtn.textContent = 'Simulating...';
+
+            const oldPanel = document.getElementById('sim-results-panel');
+            if (oldPanel) oldPanel.remove();
+            const temp = document.getElementById('temp-slider') ? Number(document.getElementById('temp-slider').value) : 25.0;
+            const wind = document.getElementById('wind-slider') ? Number(document.getElementById('wind-slider').value) : 2.0;
+            const n = document.getElementById('n-input') ? Number(document.getElementById('n-input').value) : 5;
+            const f = 1 / 24;
+            const offset = 1;
+            const A = -0.1;
+            const C = 0;
+
+            const rawArr = [];
+            for (let h = 0; h < 24; h++) {
+                rawArr.push(offset + A * Math.sin(2 * Math.PI * f * h + C));
+            }
+            for (let hour = 0; hour <= 24; hour++) {
+                simTimeEl.textContent = `Time: ${String(hour).padStart(2,'0')}:00`;
+                const load_mult = rawArr[hour % 24];
+                const resp = await fetchGridStatus(temp, wind, load_mult, n);
+                const overloaded = collectOverloadedLinesFromResponse(resp);
+                if (overloaded.length > 0) {
+                    simEvents.push({
+                        hour: hour,
+                        lines: overloaded
+                    });
+                }
+                await sleep(500);
+            }
+            simRunning = false;
+            simBtn.disabled = false;
+            simBtn.textContent = 'Run 24h Simulation';
+            simTimeEl.textContent = 'Time: 00:00';
+
+            if (simEvents.length === 0) {
+                showSimSummaryPanel(null, []);
+            } else {
+                const earliest = simEvents.reduce((a,b) => a.hour < b.hour ? a : b);
+                showSimSummaryPanel(earliest, simEvents);
+            }
+        }
+        simBtn.addEventListener('click', () => {
+            run24hSimulation().catch(err => {
+                console.error("24h-sim fatal:", err);
+                simRunning = false;
+                simBtn.disabled = false;
+                simBtn.textContent = 'Run 24h Simulation';
+            });
+        });
+
+    })();
+    </script>
+</body>
+</html>
